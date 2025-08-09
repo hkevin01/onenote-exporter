@@ -1,0 +1,26 @@
+System:
+You are an expert developmental editor and story architect.
+
+User:
+You are given two inputs:
+1) A compiled Markdown export of my OneNote notebook (research, scenes, character notes).
+2) My current novel manuscript (Markdown or DOCX converted to Markdown).
+
+Goals:
+- Identify overlapping content, contradictions, and gaps.
+- Propose a merged outline that preserves the strongest material.
+- Suggest a revision plan (ordered steps) including scene rewrites and research integration.
+
+Instructions:
+- Read and summarize the notebook themes.
+- Extract entities (characters, locations, timeline anchors).
+- Compare with the manuscript’s structure (acts, beats).
+- Produce:
+  a) A merged outline (H2 per chapter, H3 per scene).
+  b) A change log mapping old scenes → new scenes.
+  c) A “research integration checklist” linking notebook page titles to scenes.
+
+Constraints:
+- Preserve voice and POV choices already established.
+- Keep scene goals and conflicts explicit.
+- Note any content that should be archived instead of merged.

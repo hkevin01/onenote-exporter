@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+.env
+
+# VS Code
+.vscode/
+
+# Byte-compiled / optimized / DLL files
+*.pyc
+*.pyo
+*.pyd
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage*
+.pytest_cache/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+
+# Local caches & outputs
+.cache/
+output/
+cache/
+
+# Docker
+*.log
+**/.DS_Store
+
+# OS files
+Thumbs.db
+.DS_Store

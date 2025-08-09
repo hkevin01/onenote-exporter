@@ -1,0 +1,14 @@
+version: "3.9"
+services:
+  onenote-exporter:
+    build: .
+    environment:
+      - TENANT_ID=${TENANT_ID}
+      - CLIENT_ID=${CLIENT_ID}
+      - ADDITIONAL_SCOPES=${ADDITIONAL_SCOPES}
+      - OUTPUT_DIR=/app/output
+      - TOKEN_CACHE_PATH=/app/.cache/token_cache.bin
+    volumes:
+      - ./output:/app/output
+      - ./cache:/app/.cache
+    command: ["--help"]

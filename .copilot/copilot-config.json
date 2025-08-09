@@ -1,0 +1,11 @@
+{
+  "style": {
+    "python": {
+      "prefer_type_hints": true,
+      "docstrings": true
+    }
+  },
+  "prompts": {
+    "exporter": "Write clean, modular Python 3.11 code using requests + msal for Graph and beautifulsoup4 + markdownify for HTML→MD."
+  }
+}
