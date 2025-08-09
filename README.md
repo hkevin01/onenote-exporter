@@ -1,15 +1,19 @@
 # OneNote Exporter
 
-A complete, Dockerized, Windows-friendly tool to export Microsoft OneNote notebooks via Microsoft Graph API into clean Markdown with embedded assets, optional compiled DOCX, and JSONL for LLM ingestion.
+A complete, Docker-ready tool to export Microsoft OneNote notebooks via Microsoft Graph API into clean Markdown with embedded assets, optional compiled DOCX, and JSONL for LLM ingestion.
+
+**🚀 Zero-dependency setup**: Only requires Docker - everything else is handled automatically!
 
 ## Features
 
+- **One-command setup**: Clone, run setup script, start exporting
+- **Docker-first**: No Python, dependencies, or complex setup required
 - **Authentication**: Device-code flow via MSAL with token caching
 - **Notebook Discovery**: List and select notebooks by name or ID
 - **Complete Export**: Every page to clean Markdown with downloaded images/attachments
 - **Compiled Output**: Single Markdown file + optional DOCX (via pandoc)
 - **LLM Ready**: JSONL format (one record per page) for RAG/vector search
-- **Cross-Platform**: Dockerized for Windows/macOS/Linux with persistent cache
+- **Cross-Platform**: Works on Windows/macOS/Linux with persistent cache
 - **Progress Tracking**: Visual progress bars for large notebooks
 
 ## How it works
@@ -17,6 +21,7 @@ A complete, Dockerized, Windows-friendly tool to export Microsoft OneNote notebo
 Uses Microsoft Graph OneNote API through direct REST calls (msal + requests). OneNote HTML is parsed and converted to clean Markdown (beautifulsoup4 + markdownify). Images and attachments are downloaded locally and relinked.
 
 **Important limitations:**
+
 - Only cloud-synced notebooks (Microsoft 365/OneDrive/Personal OneDrive)
 - Local-only notebooks are not accessible via Graph API
 - Work/school tenants may require admin consent for Graph permissions
@@ -49,12 +54,50 @@ ADDITIONAL_SCOPES=
 
 ## Quick Start
 
-### Option A: Docker Compose (Recommended)
+### One-Command Setup (Recommended)
 
 ```bash
-# Build the container
+# Clone the repository
+git clone https://github.com/username/onenote-exporter.git
+cd onenote-exporter
+
+# Run setup script (creates directories, .env file, builds Docker image)
+./setup.sh              # Linux/macOS
+# OR
+setup.bat               # Windows
+
+# Edit .env file with your Azure app details
+# Then start using:
+docker compose run --rm onenote-exporter --list
+```
+
+### Manual Setup
+
+If you prefer to set up manually:
+
+```bash
+# 1. Clone repository
+git clone https://github.com/username/onenote-exporter.git
+cd onenote-exporter
+
+# 2. Create directories and environment file
+mkdir -p output cache
+cp .env.example .env
+
+# 3. Edit .env with your Azure app credentials
+# TENANT_ID=your-tenant-id
+# CLIENT_ID=your-client-id
+
+# 4. Build Docker image
 docker compose build
 
+# 5. Start using
+docker compose run --rm onenote-exporter --list
+```
+
+### Docker Compose Commands
+
+```bash
 # List available notebooks
 docker compose run --rm onenote-exporter --list
 
@@ -70,32 +113,21 @@ docker compose run --rm onenote-exporter \
   --merge
 ```
 
-### Option B: Docker Run
+### Alternative: Direct Docker Run
+
+If you prefer not to use docker-compose:
 
 ```bash
+# Build image
 docker build -t onenote-exporter .
 
+# Run with environment variables
 docker run --rm -it \
-  -e TENANT_ID=your-tenant \
+  -e TENANT_ID=your-tenant-id \
   -e CLIENT_ID=your-client-id \
   -v "$(pwd)/output:/app/output" \
   -v "$(pwd)/cache:/app/.cache" \
   onenote-exporter --notebook "My Notes" --merge
-```
-
-### Option C: Local Development
-
-```bash
-# Setup virtual environment
-bash scripts/setup_venv.sh
-source .venv/bin/activate
-
-# Set environment variables
-export TENANT_ID=your-tenant-id
-export CLIENT_ID=your-client-id
-
-# Run directly
-PYTHONPATH=./src python -m onenote_exporter.cli --help
 ```
 
 ## Usage
@@ -119,7 +151,7 @@ Options:
 
 ### Output Structure
 
-```
+```text
 output/
 ├── my-notebook-slug/          # Individual page exports
 │   ├── page-1.md
