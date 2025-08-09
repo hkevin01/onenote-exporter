@@ -8,6 +8,7 @@ import uuid
 
 from bs4 import BeautifulSoup
 from markdownify import markdownify as md
+from tqdm import tqdm
 
 from .graph import (
     get_page_content_html,
@@ -112,14 +113,14 @@ def export_notebook(
 
     sections = list_sections_in_notebook(token, notebook_id)
 
-    for section in sections:
+    for section in tqdm(sections, desc=f"Sections in {notebook_name}"):
         section_name = section.get("displayName") or "Untitled Section"
         section_id = section.get("id")
         if not section_id:
             continue
 
         pages = list_pages_in_section(token, str(section_id))
-        for page in pages:
+        for page in tqdm(pages, desc=f"Pages in {section_name}", leave=False):
             page_id = page.get("id")
             if not page_id:
                 continue
