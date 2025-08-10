@@ -8,13 +8,16 @@ output/
 cache/
 .cache/
 
+# Don't ignore the template files and setup directories
+!.env.example
+!output/.gitkeep
+!cache/.gitkeep
+!podman/
+
 # Virtual environments
 .venv/
 venv/
 .env
-
-# Don't ignore the example env file
-!.env.example
 
 # VS Code
 .vscode/

@@ -1,15 +1,24 @@
 # 🚀 Quick Start - OneNote Exporter
 
-**Requirements**: Docker only! Everything else is included.
+**Requirements**: Docker or Podman only! Everything else is included.
 
 ## 1. Clone & Setup
 
 ```bash
 git clone https://github.com/username/onenote-exporter.git
 cd onenote-exporter
+
+# Choose your container runtime:
+
+# Docker (recommended)
 ./setup.sh     # Linux/macOS
 # OR
 setup.bat      # Windows
+
+# Podman (rootless alternative)
+./podman/setup-podman.sh     # Linux/macOS
+# OR
+podman\setup-podman.bat      # Windows
 ```
 
 ## 2. Configure Azure App
@@ -28,11 +37,13 @@ Get these from: [Azure Portal](https://portal.azure.com) → App registrations �
 ## 3. Export Your Notes
 
 ```bash
-# List notebooks
+# Docker commands:
 docker compose run --rm onenote-exporter --list
-
-# Export a notebook
 docker compose run --rm onenote-exporter --notebook "My Notes" --merge
+
+# Podman commands:
+podman-compose -f podman/podman-compose.yml run --rm onenote-exporter --list
+podman-compose -f podman/podman-compose.yml run --rm onenote-exporter --notebook "My Notes" --merge
 ```
 
 ## 📁 Outputs

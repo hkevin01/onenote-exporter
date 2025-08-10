@@ -61,14 +61,23 @@ ADDITIONAL_SCOPES=
 git clone https://github.com/username/onenote-exporter.git
 cd onenote-exporter
 
-# Run setup script (creates directories, .env file, builds Docker image)
+# Choose your container runtime:
+
+# Option A: Docker (recommended)
 ./setup.sh              # Linux/macOS
 # OR
 setup.bat               # Windows
 
+# Option B: Podman (rootless alternative)
+./podman/setup-podman.sh              # Linux/macOS
+# OR
+podman\setup-podman.bat               # Windows
+
 # Edit .env file with your Azure app details
 # Then start using:
 docker compose run --rm onenote-exporter --list
+# OR
+podman-compose -f podman/podman-compose.yml run --rm onenote-exporter --list
 ```
 
 ### Manual Setup
@@ -169,6 +178,27 @@ output/
 - **Markdown (.md)**: Clean formatted text with local asset links
 - **DOCX (.docx)**: Compiled document via pandoc (requires --merge)
 - **JSONL (.jsonl)**: One JSON record per page for RAG/vector databases
+
+## Container Runtime Options
+
+This project supports both Docker and Podman for maximum flexibility:
+
+### Docker (Default)
+
+- **Standard**: Most widely supported
+- **Cross-platform**: Works on all major platforms
+- **Easy setup**: Single daemon, well-documented
+- **Files**: `docker-compose.yml`, `setup.sh`, `setup.bat`
+
+### Podman (Alternative)
+
+- **Rootless**: Better security, no root required
+- **Daemonless**: No background process needed
+- **Lightweight**: Lower resource usage
+- **Compatible**: Drop-in Docker replacement
+- **Files**: `podman/` directory with dedicated setup
+
+Choose the runtime that best fits your security and infrastructure requirements.
 
 ## Development
 
