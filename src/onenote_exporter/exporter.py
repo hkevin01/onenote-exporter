@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import datetime as _dt
+import hashlib
+import mimetypes
 from typing import Any
 import pathlib
 import re
@@ -36,8 +38,10 @@ def write_front_matter(info: dict) -> str:
 
 def onenote_html_to_markdown(
     token: str, html: str, assets_dir: pathlib.Path
-) -> str:
+) -> tuple[str, list[dict[str, Any]]]:
     soup = BeautifulSoup(html, "html.parser")
+
+    collected_assets: list[dict[str, Any]] = []
 
     for tag in soup.find_all(["img", "object"]):
         url_attr = None
@@ -66,22 +70,31 @@ def onenote_html_to_markdown(
                 fn = cd.split("filename=")[-1].strip('"; ')
                 if fn:
                     local_path = local_path.with_name(fn)
+            hasher = hashlib.sha256()
+            size = 0
             with open(local_path, "wb") as f:
                 for chunk in r.iter_content(chunk_size=8192):
                     if chunk:
                         f.write(chunk)
+                        hasher.update(chunk)
+                        size += len(chunk)
             rel_path = local_path.relative_to(assets_dir.parent).as_posix()
             if tag.name == "img":
                 tag["src"] = rel_path
-                for a in [
-                    "data-fullres-src",
-                    "data-src",
-                ]:
+                for a in ["data-fullres-src", "data-src"]:
                     if a in tag.attrs:
                         del tag.attrs[a]
             elif tag.name == "object":
                 tag["data"] = rel_path
-        except (OSError, ValueError):
+            collected_assets.append(
+                {
+                    "rel_path": rel_path,
+                    "mime_type": r.headers.get("Content-Type", ""),
+                    "size_bytes": size,
+                    "sha256": hasher.hexdigest(),
+                }
+            )
+        except (OSError, ValueError):  # pragma: no cover - network edge
             # Leave absolute URL if download fails
             pass
 
@@ -98,7 +111,7 @@ def onenote_html_to_markdown(
     )
 
     markdown = re.sub(r"\n{3,}", "\n\n", markdown).strip() + "\n"
-    return markdown
+    return markdown, collected_assets
 
 
 def export_notebook(
@@ -161,6 +174,137 @@ def export_notebook(
     created_count = 0
     updated_count = 0
     skipped_count = 0
+
+    # Index-only mode: scan existing outputs and populate DB then return
+    if index_only:
+        if build_db and DBManager is not None:
+            db = DBManager(db_path or (out_root / ".." / "catalog.sqlite"))
+            db.upsert_notebook(
+                {
+                    "id": notebook_id,
+                    "name": notebook_name,
+                    "slug": slugify(notebook_name),
+                    "created": "",
+                    "modified": "",
+                }
+            )
+            # scan pages
+            for md_file in (out_root / "pages").glob("*.md"):
+                try:
+                    text = md_file.read_text(encoding="utf-8")
+                except OSError:
+                    continue
+                meta: dict[str, str] = {}
+                body = text
+                if text.startswith("---\n"):
+                    parts = text.split("\n---\n", 1)
+                    if len(parts) == 2:
+                        fm_block = parts[0][4:]
+                        body = parts[1]
+                        for line in fm_block.splitlines():
+                            if ":" in line:
+                                k, v = line.split(":", 1)
+                                meta[k.strip()] = v.strip()
+                title = meta.get("title") or "Unknown"
+                section_name = meta.get("section") or "Unknown Section"
+                page_id = meta.get("page_id") or md_file.stem
+                section_id = meta.get("section_id") or (
+                    "sec-" + slugify(section_name)
+                )
+                section_slug = slugify(section_name)
+                db.upsert_section(
+                    {
+                        "id": section_id,
+                        "notebook_id": notebook_id,
+                        "name": section_name,
+                        "slug": section_slug,
+                        "created": meta.get("section_created", ""),
+                        "modified": meta.get("section_modified", ""),
+                    }
+                )
+                # Derive body content: drop first heading line if present
+                body_lines = body.splitlines()
+                if body_lines and body_lines[0].startswith("# "):
+                    body_hash_source = "\n".join(body_lines[1:])
+                else:
+                    body_hash_source = body
+                content_hash = DBManager.hash_content(body_hash_source)
+                word_count = len(body_hash_source.split())
+                db.upsert_page(
+                    {
+                        "id": page_id,
+                        "section_id": section_id,
+                        "notebook_id": notebook_id,
+                        "title": title,
+                        "slug": slugify(title),
+                        "created": meta.get("created", ""),
+                        "modified": meta.get("modified", ""),
+                        "md_path": str(md_file),
+                        "merged_path": "",
+                        "jsonl_path": "",
+                        "content_hash": content_hash,
+                        "word_count": word_count,
+                        "page_order": 0,
+                    }
+                )
+                # Assets
+                page_assets_dir = assets_root / page_id
+                if page_assets_dir.exists():
+                    asset_rows = []
+                    for f in page_assets_dir.rglob("*"):
+                        if f.is_file():
+                            try:
+                                data = f.read_bytes()
+                            except OSError:
+                                continue
+                            asset_rows.append(
+                                {
+                                    "rel_path": f.relative_to(out_root)
+                                    .as_posix(),
+                                    "mime_type": (
+                                        mimetypes.guess_type(f.name)[0] or ""
+                                    ),
+                                    "size_bytes": len(data),
+                                    "sha256": hashlib.sha256(data).hexdigest(),
+                                }
+                            )
+                    if asset_rows:
+                        db.upsert_assets(page_id, asset_rows)
+            db.commit()
+            db.close()
+        # Build index.json from existing pages
+        index_records = []
+        for md_file in (out_root / "pages").glob("*.md"):
+            try:
+                content = md_file.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            meta = {}
+            if content.startswith("---\n"):
+                parts = content.split("\n---\n", 1)
+                if len(parts) == 2:
+                    fm_block = parts[0][4:]
+                    for line in fm_block.splitlines():
+                        if ":" in line:
+                            k, v = line.split(":", 1)
+                            meta[k.strip()] = v.strip()
+            index_records.append(
+                {
+                    "notebook": notebook_name,
+                    "section": meta.get("section", ""),
+                    "title": meta.get("title", md_file.stem),
+                    "page_id": meta.get("page_id", md_file.stem),
+                    "created": meta.get("created", ""),
+                    "modified": meta.get("modified", ""),
+                    "path": str(md_file),
+                    "web_url": meta.get("web_url", ""),
+                    "client_url": meta.get("client_url", ""),
+                }
+            )
+        (out_root / "index.json").write_text(
+            json.dumps(index_records, indent=2), encoding="utf-8"
+        )
+        return index_records
 
     for section in tqdm(sections, desc=f"Sections in {notebook_name}"):
         section_name = section.get("displayName") or "Untitled Section"
@@ -239,8 +383,9 @@ def export_notebook(
                 skip_due_to_unchanged = True
 
             html = get_page_content_html(token, page_id)
-            collected_assets: list[dict] = []
-            md_body = onenote_html_to_markdown(token, html, page_assets_dir)
+            md_body, collected_assets = onenote_html_to_markdown(
+                token, html, page_assets_dir
+            )
 
             content_hash = (
                 DBManager.hash_content(md_body)
@@ -252,6 +397,7 @@ def export_notebook(
                 {
                     "notebook": notebook_name,
                     "section": section_name,
+                    "section_id": section_id,
                     "title": title,
                     "page_id": page_id,
                     "created": created,
@@ -347,6 +493,40 @@ def export_notebook(
                     "content": content,
                 }
                 sf.write(json.dumps(obj, ensure_ascii=False) + "\n")
+        # Update jsonl_path for pages in this section if DB present
+        if db and DBManager is not None:
+            for rec in recs:
+                # Recompute content hash from body (exclude front matter)
+                try:
+                    raw = pathlib.Path(rec["path"]).read_text(encoding="utf-8")
+                except OSError:
+                    raw = ""
+                body = raw
+                if raw.startswith("---\n") and "\n---\n" in raw:
+                    body = raw.split("\n---\n", 1)[1]
+                if body.startswith("# "):
+                    body_for_hash = "\n".join(body.splitlines()[1:])
+                else:
+                    body_for_hash = body
+                content_hash = DBManager.hash_content(body_for_hash)
+                word_count = len(body_for_hash.split())
+                db.upsert_page(
+                    {
+                        "id": rec["page_id"],
+                        "section_id": section_id,
+                        "notebook_id": notebook_id,
+                        "title": rec["title"],
+                        "slug": slugify(rec["title"]),
+                        "created": rec["created"],
+                        "modified": rec["modified"],
+                        "md_path": rec["path"],
+                        "merged_path": "",  # set later if merge
+                        "jsonl_path": str(jsonl_file),
+                        "content_hash": content_hash,
+                        "word_count": word_count,
+                        "page_order": 0,
+                    }
+                )
 
     if merge:
         compiled_md = (
@@ -355,26 +535,26 @@ def export_notebook(
         compiled_md_path = out_root / f"{slugify(notebook_name)}-compiled.md"
         compiled_md_path.write_text(compiled_md, encoding="utf-8")
 
-        if "docx" in out_formats:
-            try:
-                import pypandoc  # type: ignore
+    if "docx" in out_formats:
+        try:
+            import pypandoc  # type: ignore
 
-                docx_path = out_root / (
-                    f"{slugify(notebook_name)}-compiled.docx"
-                )
-                pypandoc.convert_text(
-                    compiled_md,
-                    "docx",
-                    format="md",
-                    outputfile=str(docx_path),
-                )
-            except (OSError, RuntimeError) as e:
-                print(
-                    f"[WARN] DOCX conversion failed (pandoc/pypandoc): {e}"
-                )
+            docx_path = out_root / (
+                f"{slugify(notebook_name)}-compiled.docx"
+            )
+            pypandoc.convert_text(
+                compiled_md,
+                "docx",
+                format="md",
+                outputfile=str(docx_path),
+            )
+        except (OSError, RuntimeError) as e:
+            print(
+                f"[WARN] DOCX conversion failed (pandoc/pypandoc): {e}"
+            )
 
     jsonl_path = out_root / f"{slugify(notebook_name)}-pages.jsonl"
-    with open(jsonl_path, "w", encoding="utf-8") as f:
+    with open(jsonl_path, "w", encoding="utf-8") as jf:
         for rec in all_pages_records:
             try:
                 content = pathlib.Path(rec["path"]).read_text(encoding="utf-8")
@@ -389,9 +569,45 @@ def export_notebook(
                 "modified": rec["modified"],
                 "content": content,
             }
-            f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+            jf.write(json.dumps(obj, ensure_ascii=False) + "\n")
 
     if db:
+        # Update merged_path and jsonl_path for all pages if merge enabled
+        if merge and DBManager is not None:
+            merged_path_str = str(
+                out_root / f"{slugify(notebook_name)}-compiled.md"
+            )
+            for rec in all_pages_records:
+                try:
+                    raw = pathlib.Path(rec["path"]).read_text(encoding="utf-8")
+                except OSError:
+                    raw = ""
+                body = raw
+                if raw.startswith("---\n") and "\n---\n" in raw:
+                    body = raw.split("\n---\n", 1)[1]
+                if body.startswith("# "):
+                    body_for_hash = "\n".join(body.splitlines()[1:])
+                else:
+                    body_for_hash = body
+                content_hash = DBManager.hash_content(body_for_hash)
+                word_count = len(body_for_hash.split())
+                db.upsert_page(
+                    {
+                        "id": rec["page_id"],
+                        "section_id": "",  # keep existing
+                        "notebook_id": notebook_id,
+                        "title": rec["title"],
+                        "slug": slugify(rec["title"]),
+                        "created": rec["created"],
+                        "modified": rec["modified"],
+                        "md_path": rec["path"],
+                        "merged_path": merged_path_str,
+                        "jsonl_path": str(jsonl_path),
+                        "content_hash": content_hash,
+                        "word_count": word_count,
+                        "page_order": 0,
+                    }
+                )
         db.commit()
         db.close()
         print(

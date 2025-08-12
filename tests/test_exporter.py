@@ -50,6 +50,7 @@ def test_html_to_markdown_download_links(monkeypatch, tmp_path):
     monkeypatch.setattr("onenote_exporter.exporter.graph_get", fake_get)
 
     assets_dir = tmp_path / "assets"
-    md = onenote_html_to_markdown("token", html, assets_dir)
+    md, assets = onenote_html_to_markdown("token", html, assets_dir)
     # The image src should be rewritten to relative assets path
     assert "assets/" in md
+    assert assets and assets[0]["rel_path"].startswith("assets/")
