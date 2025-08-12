@@ -7,7 +7,7 @@ import sys
 from typing import cast
 
 from .auth import acquire_token
-from .config import CLIENT_ID, OUTPUT_DIR
+from .config import CLIENT_ID, OUTPUT_DIR, DB_PATH
 from .exporter import export_notebook
 from .graph import list_notebooks
 from .utils import slugify
@@ -42,6 +42,25 @@ def parse_args() -> argparse.Namespace:
         "--list",
         action="store_true",
         help="List notebooks and exit",
+    )
+    p.add_argument(
+        "--build-db",
+        action="store_true",
+        help="Populate/update local SQLite catalog (incremental export)",
+    )
+    p.add_argument(
+        "--db-path",
+        default=str(DB_PATH),
+        help="Path to SQLite catalog (default: ./output/catalog.sqlite)",
+    )
+    p.add_argument(
+        "--since",
+        help="Only (re)export pages modified on/after this ISO8601 timestamp",
+    )
+    p.add_argument(
+        "--index-only",
+        action="store_true",
+        help="Index existing output folder into DB without calling Graph",
     )
 
     return p.parse_args()
@@ -115,12 +134,16 @@ def main() -> None:
         if f.strip()
     }
     export_notebook(
-        token,
-        nb_id,
-        nb_name,
-        nb_out_root,
-        args.merge,
-        out_formats,
+        token=token,
+        notebook_id=nb_id,
+        notebook_name=nb_name,
+        out_root=nb_out_root,
+        merge=args.merge,
+        out_formats=out_formats,
+        build_db=args.build_db,
+        db_path=pathlib.Path(args.db_path),
+        since=args.since,
+        index_only=args.index_only,
     )
 
     print(f"\nDone. Outputs in: {nb_out_root}")
